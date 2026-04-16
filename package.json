@@ -1,0 +1,44 @@
+{
+  "name": "nanosearch",
+  "version": "1.0.0",
+  "author": "Christian Kellner",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "yarn --cwd lib/frontend dev",
+    "build": "yarn --cwd lib/frontend build",
+    "test:backend": "yarn --cwd lib/backend test --run",
+    "test:frontend": "yarn --cwd lib/frontend test --run",
+    "test": "yarn test:backend && yarn test:frontend",
+    "start": "yarn build && yarn --cwd lib/backend start",
+    "setup": "node scripts/download-traineddata.mjs",
+    "inst": "yarn install && yarn --cwd lib/backend install && yarn --cwd lib/frontend install && yarn setup",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "prepare": "husky",
+    "copyright": "node ./tools/copyright.js",
+    "release": "node ./tools/release/release.js"
+  },
+  "type": "module",
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "eslint": "10.2.0",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-react": "7.37.5",
+    "globals": "17.5.0",
+    "husky": "9.1.7",
+    "lint-staged": "16.4.0",
+    "prettier": "3.8.3"
+  },
+  "lint-staged": {
+    "**/*.{js,jsx}": [
+      "eslint --fix",
+      "prettier --write",
+      "yarn copyright"
+    ],
+    "**/*.{json,css,md}": "prettier --write"
+  }
+}
