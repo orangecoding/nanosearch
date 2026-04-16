@@ -1,0 +1,22 @@
+services:
+  nanosearch:
+    build: .
+    image: ghcr.io/orangecoding/nanosearch:latest
+    container_name: nanosearch
+    ports:
+      - "${PORT:-3000}:${PORT:-3000}"
+    volumes:
+      - ./db:/data
+      # Mount each search directory individually.
+      # Paths inside the container must match the host paths listed in SEARCH_DIRS.
+      # Example:
+      #   - /Volumes/Backup/Documents:/Volumes/Backup/Documents:ro
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      PORT: ${PORT:-3000}
+      NODE_ENV: production
+      OCR_BACKEND: cli
+      DB_PATH: ${DB_PATH:-/data/nanosearch.db}
+    restart: unless-stopped

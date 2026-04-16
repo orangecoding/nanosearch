@@ -1,0 +1,13 @@
+node_modules/
+lib/backend/node_modules/
+lib/frontend/node_modules/
+.idea/
+.env
+*.db
+*.db-shm
+*.db-wal
+*.traineddata
+.tesseract-cache/
+lib/frontend/dist/
+.DS_Store
+.worktrees/

@@ -1,0 +1,41 @@
+name: Tests
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+          cache-dependency-path: |
+            lib/backend/yarn.lock
+            lib/frontend/yarn.lock
+
+      - name: Install root dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Install backend dependencies
+        run: yarn --cwd lib/backend install --frozen-lockfile
+
+      - name: Install frontend dependencies
+        run: yarn --cwd lib/frontend install --frozen-lockfile
+
+      - name: Lint
+        run: yarn lint
+
+      - name: Run backend tests
+        run: yarn test:backend
+
+      - name: Run frontend tests
+        run: yarn test:frontend

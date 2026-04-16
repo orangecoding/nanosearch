@@ -1,0 +1,8 @@
+node_modules/
+lib/backend/node_modules/
+lib/frontend/node_modules/
+lib/frontend/dist/
+.git/
+.env
+*.db
+docs/
