@@ -101,14 +101,15 @@ Open `http://localhost:3000`, click **Create Index**, then search.
 
 All options are set via environment variables (or `.env` at the project root):
 
-| Variable      | Default              | Description                                                                  |
-| ------------- | -------------------- | ---------------------------------------------------------------------------- |
-| `SEARCH_DIRS` | _(required)_         | Comma-separated list of directories to index                                 |
-| `DB_PATH`     | `./db/nanosearch.db` | Path to the SQLite database file                                             |
-| `OCR_BACKEND` | `js`                 | `js` (Tesseract.js) or `cli` (Tesseract CLI)                                 |
-| `PORT`        | `3000`               | Backend port                                                                 |
-| `LOG_LEVEL`   | `info`               | Pino log level                                                               |
-| `EXTENSIONS`  | _(see .env.example)_ | Complete list of extensions to index. Nothing is indexed unless listed here. |
+| Variable                | Default              | Description                                                                          |
+| ----------------------- | -------------------- | ------------------------------------------------------------------------------------ |
+| `SEARCH_DIRS`           | _(required)_         | Comma-separated list of directories to index                                         |
+| `DB_PATH`               | `./db/nanosearch.db` | Path to the SQLite database file                                                     |
+| `OCR_BACKEND`           | `js`                 | `js` (Tesseract.js) or `cli` (Tesseract CLI)                                         |
+| `PORT`                  | `3000`               | Backend port                                                                         |
+| `LOG_LEVEL`             | `info`               | Pino log level                                                                       |
+| `RESCAN_INTERVAL_HOURS` | `0`                  | Automatically re-scan and re-index new/changed files every X hours. `0` disables it. |
+| `EXTENSIONS`            | _(see .env.example)_ | Complete list of extensions to index. Nothing is indexed unless listed here.         |
 
 ---
 
