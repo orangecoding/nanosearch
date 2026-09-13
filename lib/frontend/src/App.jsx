@@ -98,7 +98,7 @@ function ReindexDialog({ onChoice, onClose }) {
           <button className="reindex-option" onClick={() => onChoice(false)}>
             <span className="reindex-option-name">Update</span>
             <span className="reindex-option-desc">
-              Keep the existing index and only process new or changed files. Fast.
+              Keep the existing index. Only files that were added, edited, moved or deleted are touched. Fast.
             </span>
           </button>
           <button className="reindex-option reindex-option--full" onClick={() => onChoice(true)}>
@@ -154,7 +154,9 @@ export default function App() {
         setAppStatus('ready')
         refetch()
       } else {
-        setProgress(event)
+        // Events are merged rather than replaced: the scan summary arrives once,
+        // up front, and has to survive every per-file progress event after it.
+        setProgress((prev) => ({ ...prev, ...event }))
       }
     },
     [refetch],
@@ -182,6 +184,8 @@ export default function App() {
         body: JSON.stringify({ full }),
       })
       if (res.status === 202) {
+        // Drop the previous run's numbers so they cannot bleed into this one.
+        setProgress(null)
         if (donePendingRef.current) {
           donePendingRef.current = false
           refetch()

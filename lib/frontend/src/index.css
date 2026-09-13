@@ -311,6 +311,11 @@ body {
   font-weight: 500;
 }
 
+.progress-summary {
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
 .progress-eta {
   font-size: 12px;
   color: var(--color-muted);

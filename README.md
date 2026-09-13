@@ -22,7 +22,8 @@ A web-based full-text search tool for local directories. Easy indexing of your f
 ## Features
 
 - Full-text search with SQLite FTS5 (BM25 ranking, highlighted snippets)
-- Incremental re-indexing, only new or changed files are processed
+- Incremental re-indexing driven by content hashes, only genuinely new or edited files are processed
+- Moved and renamed files are detected by content and re-linked without re-extracting them
 - OCR for scanned PDFs and images (Tesseract.js locally, Tesseract CLI in Docker)
 - Supports all sorts of files, e.g. PDF, DOCX, TXT, Markdown, JPG, PNG, TIFF
 - Real-time indexing progress

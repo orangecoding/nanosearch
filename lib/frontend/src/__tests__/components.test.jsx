@@ -70,6 +70,56 @@ describe('ProgressOverlay', () => {
     render(<ProgressOverlay file="report.pdf" processed={1} total={10} percent={10} eta={-1} />)
     expect(screen.getByText('report.pdf')).toBeInTheDocument()
   })
+
+  it('reports how much of the scan actually needs indexing', () => {
+    render(<ProgressOverlay file="report.pdf" processed={1} total={12} percent={8} eta={-1} scanned={12430} />)
+    expect(screen.getByText(/12 of 12430 files changed/i)).toBeInTheDocument()
+  })
+
+  it('reports moved and removed files alongside the changed count', () => {
+    render(
+      <ProgressOverlay
+        file="a.pdf"
+        processed={1}
+        total={2}
+        percent={50}
+        eta={-1}
+        scanned={100}
+        moved={3}
+        removed={4}
+      />,
+    )
+    expect(screen.getByText(/3 moved/i)).toBeInTheDocument()
+    expect(screen.getByText(/4 removed/i)).toBeInTheDocument()
+  })
+
+  it('leaves out moved and removed when there were none', () => {
+    render(
+      <ProgressOverlay
+        file="a.pdf"
+        processed={1}
+        total={2}
+        percent={50}
+        eta={-1}
+        scanned={100}
+        moved={0}
+        removed={0}
+      />,
+    )
+    expect(screen.queryByText(/moved/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/removed/i)).not.toBeInTheDocument()
+  })
+
+  it('says the index is up to date when nothing is dirty', () => {
+    render(<ProgressOverlay scanned={12430} total={0} moved={0} removed={0} />)
+    expect(screen.getByText(/up to date/i)).toBeInTheDocument()
+    expect(screen.queryByText('Preparing…')).not.toBeInTheDocument()
+  })
+
+  it('still shows "Preparing…" before the scan summary arrives', () => {
+    render(<ProgressOverlay />)
+    expect(screen.getByText('Preparing…')).toBeInTheDocument()
+  })
 })
 
 describe('ResultItem', () => {
