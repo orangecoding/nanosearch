@@ -27,11 +27,14 @@ FROM node:22-slim
 
 WORKDIR /app
 
-# Install Tesseract CLI with German and English language packs
+# Install Tesseract CLI with German and English language packs.
+# poppler-utils provides pdftoppm, which rasterizes scanned PDFs before OCR
+# (Tesseract itself cannot read PDF files).
 RUN apt-get update && apt-get install -y --no-install-recommends \
     tesseract-ocr \
     tesseract-ocr-deu \
     tesseract-ocr-eng \
+    poppler-utils \
     curl \
     && rm -rf /var/lib/apt/lists/*
 

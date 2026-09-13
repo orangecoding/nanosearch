@@ -4,7 +4,7 @@ services:
     image: ghcr.io/orangecoding/nanosearch:latest
     container_name: nanosearch
     ports:
-      - "${PORT:-3000}:${PORT:-3000}"
+      - '${PORT:-3000}:${PORT:-3000}'
     volumes:
       - ./db:/data
       # Mount each search directory individually.

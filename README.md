@@ -121,3 +121,17 @@ All options are set via environment variables (or `.env` at the project root):
 | `cli`   | System `tesseract` binary                | Docker (default), faster |
 
 Both backends recognise German and English simultaneously (`deu+eng`).
+
+### Scanned PDFs
+
+Tesseract cannot read PDF files, so a PDF without a text layer is rasterized page by page
+with `pdftoppm` (poppler) before OCR runs. The Docker image ships `poppler-utils`; on bare
+metal install it once:
+
+```bash
+brew install poppler          # macOS
+apt-get install poppler-utils # Debian/Ubuntu
+```
+
+If `pdftoppm` is missing, scanned PDFs are simply skipped with a warning; all other files
+are indexed as usual.
