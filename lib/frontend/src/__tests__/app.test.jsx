@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import App from '../App.jsx'
 
@@ -83,5 +83,50 @@ describe('App', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /re-index/i })).toBeInTheDocument()
     })
+  })
+
+  it('shows a run that was already in progress when the page loaded', async () => {
+    fetch.mockResolvedValue({ json: () => Promise.resolve({ indexed: true, fileCount: 3, indexing: true }) })
+    render(<App />)
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /indexing/i })).toBeDisabled()
+    })
+  })
+
+  it('shows progress again for a second run after the first one finished', async () => {
+    const user = userEvent.setup()
+
+    let messageHandler = null
+    const mockES = { close: vi.fn() }
+    Object.defineProperty(mockES, 'onmessage', {
+      set(fn) {
+        messageHandler = fn
+      },
+      configurable: true,
+    })
+    globalThis.EventSource = vi.fn(function () {
+      return mockES
+    })
+
+    fetch.mockImplementation((url) =>
+      Promise.resolve(
+        url === '/api/index'
+          ? { status: 202, json: () => Promise.resolve({ started: true }) }
+          : { json: () => Promise.resolve({ indexed: true, fileCount: 1, indexing: false }) },
+      ),
+    )
+
+    render(<App />)
+
+    // First run: start it, then let the server report that it finished.
+    await user.click(await screen.findByRole('button', { name: /re-index/i }))
+    await user.click(screen.getByRole('button', { name: /update/i }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /indexing/i })).toBeDisabled())
+    act(() => messageHandler({ data: JSON.stringify({ done: true, fileCount: 1 }) }))
+
+    // Second run must enter the indexing state as well.
+    await user.click(await screen.findByRole('button', { name: /re-index/i }))
+    await user.click(screen.getByRole('button', { name: /update/i }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /indexing/i })).toBeDisabled())
   })
 })

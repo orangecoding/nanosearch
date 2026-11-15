@@ -108,6 +108,7 @@ All options are set via environment variables (or `.env` at the project root):
 | `DB_PATH`               | `./db/nanosearch.db` | Path to the SQLite database file                                                     |
 | `OCR_BACKEND`           | `js`                 | `js` (Tesseract.js) or `cli` (Tesseract CLI)                                         |
 | `PORT`                  | `3000`               | Backend port                                                                         |
+| `HOST`                  | `127.0.0.1`          | Interface to listen on. `0.0.0.0` exposes the unauthenticated API to your network.   |
 | `LOG_LEVEL`             | `info`               | Pino log level                                                                       |
 | `RESCAN_INTERVAL_HOURS` | `0`                  | Automatically re-scan and re-index new/changed files every X hours. `0` disables it. |
 | `EXTENSIONS`            | _(see .env.example)_ | Complete list of extensions to index. Nothing is indexed unless listed here.         |

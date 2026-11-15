@@ -21,9 +21,15 @@ function buildFtsExpression(conditions) {
   let hasInclude = false
 
   for (const cond of conditions) {
-    const clean = cond.text.trim().replace(/["'()*:^{}~-]/g, '')
-    if (!clean) continue
-    const term = `${clean}*`
+    // Each word is quoted, so FTS5 reads it as plain text: punctuation and
+    // operator words (AND, OR, NOT) cannot break the query. Words without any
+    // letter or digit would match nothing and are skipped.
+    const words = cond.text
+      .split(/\s+/)
+      .filter((w) => /[\p{L}\p{N}]/u.test(w))
+      .map((w) => `"${w.replace(/"/g, '')}"*`)
+    if (words.length === 0) continue
+    const term = words.length === 1 ? words[0] : `(${words.join(' AND ')})`
 
     if (cond.mode === 'include') {
       parts.push(hasInclude ? `${cond.connector} ${term}` : term)

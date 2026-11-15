@@ -49,6 +49,7 @@ RUN mkdir -p /data
 
 ENV NODE_ENV=production \
     OCR_BACKEND=cli \
+    HOST=0.0.0.0 \
     PORT=3000 \
     DB_PATH=/data/nanosearch.db
 

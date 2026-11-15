@@ -3,7 +3,7 @@
  * Licensed under Apache-2.0 with Commons Clause and Attribution/Naming Clause
  */
 
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, act, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { DocumentViewer } from '../components/DocumentViewer.jsx'
@@ -12,6 +12,7 @@ import { ProgressOverlay } from '../components/ProgressOverlay.jsx'
 import { ResultItem } from '../components/ResultItem.jsx'
 import { ResultList } from '../components/ResultList.jsx'
 import { SearchBox } from '../components/SearchBox.jsx'
+import { QueryBuilder } from '../components/QueryBuilder.jsx'
 
 describe('StatusBanner', () => {
   it('renders no-index message', () => {
@@ -259,5 +260,65 @@ describe('DocumentViewer', () => {
     expect(screen.getByText('Loading…')).toBeInTheDocument()
     await waitFor(() => expect(container.querySelector('pre')).toBeInTheDocument())
     expect(container.querySelector('pre').textContent).toBe('a,b\n1,2')
+  })
+})
+
+describe('DocumentViewer markdown from untrusted files', () => {
+  const mdResult = { path: '/docs/notes.md', filename: 'notes.md', type: 'md', snippet: '...' }
+
+  afterEach(() => vi.restoreAllMocks())
+
+  /**
+   * Renders the viewer for a Markdown file with the given source.
+   * @param {string} source
+   * @returns {Promise<HTMLElement>} The rendered markdown container.
+   */
+  async function renderMarkdown(source) {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({ text: () => Promise.resolve(source) })
+    const { container } = render(<DocumentViewer result={mdResult} onBack={() => {}} />)
+    await waitFor(() => expect(container.querySelector('.doc-viewer-markdown')).toBeInTheDocument())
+    return container.querySelector('.doc-viewer-markdown')
+  }
+
+  it('shows embedded HTML as text instead of turning it into elements', async () => {
+    const body = await renderMarkdown('# Title\n\n<img src=x onerror="alert(1)">\n\ntext <script>alert(2)</script> end')
+
+    expect(body.querySelector('h1')).toHaveTextContent('Title')
+    expect(body.querySelector('img')).toBeNull()
+    expect(body.querySelector('script')).toBeNull()
+    expect(body).toHaveTextContent('<img src=x onerror="alert(1)">')
+  })
+
+  it('drops link targets with a script scheme and keeps ordinary ones', async () => {
+    const body = await renderMarkdown(
+      '[bad](javascript:alert(1)) [sneaky](<JaVa\tScript:alert(1)>) [ok](https://example.com/a)',
+    )
+
+    const hrefs = [...body.querySelectorAll('a')].map((a) => a.getAttribute('href'))
+    expect(hrefs).toEqual(['', '', 'https://example.com/a'])
+  })
+})
+
+describe('QueryBuilder', () => {
+  /**
+   * Types into the first condition and returns the FTS expression it emits.
+   * @param {string} text
+   * @returns {Promise<string>}
+   */
+  async function expressionFor(text) {
+    const onSearch = vi.fn()
+    const user = userEvent.setup()
+    render(<QueryBuilder onSearch={onSearch} />)
+    await user.type(screen.getByPlaceholderText(/word to include/i), text)
+    await waitFor(() => expect(onSearch).toHaveBeenLastCalledWith(expect.stringContaining('"')))
+    return onSearch.mock.calls.at(-1)[0]
+  }
+
+  it('quotes a term so punctuation cannot break the FTS query', async () => {
+    expect(await expressionFor('invoice.pdf')).toBe('"invoice.pdf"*')
+  })
+
+  it('quotes operator words instead of passing them on as FTS syntax', async () => {
+    expect(await expressionFor('rock AND roll')).toBe('("rock"* AND "AND"* AND "roll"*)')
   })
 })

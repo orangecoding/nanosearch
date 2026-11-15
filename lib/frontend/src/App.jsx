@@ -133,7 +133,7 @@ export default function App() {
   const resultListRef = useRef(null)
   const donePendingRef = useRef(false)
 
-  const { indexed, loading: statusLoading, refetch } = useIndexStatus()
+  const { indexed, indexing: serverIndexing, loading: statusLoading, refetch } = useIndexStatus()
   const { results, setResults, query, setQuery, exact, setExact, searchRaw } = useSearch()
 
   const handleTabChange = useCallback(
@@ -175,9 +175,21 @@ export default function App() {
     setAppStatus(indexed ? 'ready' : 'no-index')
   }, [indexed, statusLoading, appStatus])
 
+  // A run that was already going when the page loaded (started in another tab
+  // or by the scheduler): show its progress instead of pretending to be idle.
+  // Keyed on the server flag alone, so a stale `true` cannot re-trigger it
+  // after the run has finished.
+  useEffect(() => {
+    if (serverIndexing) setAppStatus('indexing')
+  }, [serverIndexing])
+
   /** Sends POST /api/index. SSE is already connected at this point. */
   const startIndex = useCallback(
     async (full = false) => {
+      // Only a `done` event that arrives while this request is in flight may
+      // count as "already finished"; one left over from an earlier run would
+      // otherwise suppress the progress view of this run.
+      donePendingRef.current = false
       const res = await fetch('/api/index', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -192,8 +204,9 @@ export default function App() {
         } else {
           setAppStatus('indexing')
         }
-      } else {
-        donePendingRef.current = false
+      } else if (res.status === 409) {
+        // Someone else started a run in the meantime - follow that one.
+        setAppStatus('indexing')
       }
     },
     [refetch],

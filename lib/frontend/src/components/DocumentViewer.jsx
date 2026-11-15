@@ -4,7 +4,32 @@
  */
 
 import { useState, useEffect } from 'react'
-import { marked } from 'marked'
+import { Marked } from 'marked'
+
+const HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }
+
+/** Schemes a link or image in a rendered document may use. */
+const SAFE_SCHEME = /^(?:https?|mailto):/i
+const ANY_SCHEME = /^[a-z][a-z0-9+.-]*:/i
+
+/**
+ * Markdown renderer for indexed files, which are untrusted content: marked
+ * passes embedded HTML through as-is and does not vet link targets. Raw HTML
+ * is therefore shown as text, and URLs with a scheme other than http(s) or
+ * mailto (javascript:, data:, ...) are dropped.
+ */
+const markdown = new Marked({
+  renderer: {
+    html: ({ text }) => text.replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]),
+  },
+  walkTokens(token) {
+    if (token.type !== 'link' && token.type !== 'image') return
+    // Browsers ignore whitespace and control characters inside a scheme.
+    // eslint-disable-next-line no-control-regex -- stripping control characters is the point
+    const href = token.href.replace(/[\x00-\x20]/g, '')
+    if (ANY_SCHEME.test(href) && !SAFE_SCHEME.test(href)) token.href = ''
+  },
+})
 
 /**
  * Maps file extensions to a render mode.
@@ -116,7 +141,7 @@ export function DocumentViewer({ result, onBack }) {
       .then((r) => r.text())
       .then((text) => {
         if (!ignored) {
-          setFetchedContent(renderMode === 'md' ? marked.parse(text) : text)
+          setFetchedContent(renderMode === 'md' ? markdown.parse(text) : text)
         }
       })
       .catch(() => {

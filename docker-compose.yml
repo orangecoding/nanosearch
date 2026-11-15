@@ -16,6 +16,8 @@ services:
         required: false
     environment:
       PORT: ${PORT:-3000}
+      # Listen on all interfaces inside the container so the published port works.
+      HOST: 0.0.0.0
       NODE_ENV: production
       OCR_BACKEND: cli
       DB_PATH: ${DB_PATH:-/data/nanosearch.db}
