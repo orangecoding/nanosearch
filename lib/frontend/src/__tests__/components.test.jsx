@@ -321,4 +321,44 @@ describe('QueryBuilder', () => {
   it('quotes operator words instead of passing them on as FTS syntax', async () => {
     expect(await expressionFor('rock AND roll')).toBe('("rock"* AND "AND"* AND "roll"*)')
   })
+
+  /**
+   * Fills the builder row by row and returns the last FTS expression it emits.
+   * @param {Array<{ mode: 'include'|'exclude', text: string, or?: boolean }>} rows
+   * @returns {Promise<string>}
+   */
+  async function expressionForRows(rows) {
+    const onSearch = vi.fn()
+    const user = userEvent.setup()
+    render(<QueryBuilder onSearch={onSearch} />)
+    for (const [i, row] of rows.entries()) {
+      if (i > 0)
+        await user.click(screen.getByRole('button', { name: row.mode === 'include' ? 'Add word' : 'Exclude word' }))
+      if (row.or) {
+        const joins = screen.getAllByRole('button', { name: 'OR' })
+        await user.click(joins.at(-1))
+      }
+      const inputs = screen.getAllByRole('textbox')
+      await user.type(inputs.at(-1), row.text)
+    }
+    await waitFor(() => expect(onSearch).toHaveBeenLastCalledWith(expect.stringContaining(rows.at(-1).text)))
+    return onSearch.mock.calls.at(-1)[0]
+  }
+
+  it('excludes with NOT, since FTS5 rejects AND NOT', async () => {
+    const expression = await expressionForRows([
+      { mode: 'include', text: 'invoice' },
+      { mode: 'exclude', text: 'draft' },
+    ])
+    expect(expression).toBe('"invoice"* NOT "draft"*')
+  })
+
+  it('applies an exclusion to every included word, also across OR', async () => {
+    const expression = await expressionForRows([
+      { mode: 'include', text: 'invoice' },
+      { mode: 'include', text: 'receipt', or: true },
+      { mode: 'exclude', text: 'draft' },
+    ])
+    expect(expression).toBe('("invoice"* OR "receipt"*) NOT "draft"*')
+  })
 })

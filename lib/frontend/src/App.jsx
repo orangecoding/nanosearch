@@ -3,65 +3,93 @@
  * Licensed under Apache-2.0 with Commons Clause and Attribution/Naming Clause
  */
 
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { SearchBox } from './components/SearchBox.jsx'
 import { ResultList } from './components/ResultList.jsx'
 import { ProgressOverlay } from './components/ProgressOverlay.jsx'
 import { StatusBanner } from './components/StatusBanner.jsx'
 import { QueryBuilder } from './components/QueryBuilder.jsx'
 import { DocumentViewer } from './components/DocumentViewer.jsx'
+import { AlertIcon, HeartIcon, RefreshIcon, SearchIcon, SlidersIcon, XIcon } from './components/Icons.jsx'
 import { useIndexStatus } from './hooks/useIndexStatus.js'
 import { useSSE } from './hooks/useSSE.js'
 import { useSearch } from './hooks/useSearch.js'
+import { shouldIgnoreShortcut } from './keyboard.js'
 
 /**
  * @typedef {'loading' | 'no-index' | 'indexing' | 'ready'} AppStatus
  */
 
-const TAB_DESCRIPTIONS = {
-  search: 'Searches all indexed files by keyword. Prefix matching enabled.',
-  extended: 'Build complex queries with include/exclude terms and AND/OR logic.',
+/** The backend returns at most this many results (LIMIT in search(), backend db/queries.js). */
+const RESULT_LIMIT = 15
+
+/** @type {Record<AppStatus, string>} */
+const PLACEHOLDERS = {
+  loading: 'Loading…',
+  'no-index': 'Search opens once the index is built',
+  indexing: 'Search is back as soon as indexing finishes',
+  ready: 'Search names, numbers, phrases…',
 }
 
 /**
- * Magnifying glass icon rendered as inline SVG.
+ * Pill in the header that says what state the index is in.
+ * @param {{ appStatus: AppStatus, fileCount: number, percent?: number }} props
  */
-function SearchIcon() {
+function StatusChip({ appStatus, fileCount, percent }) {
+  if (appStatus === 'loading') return null
+  if (appStatus === 'no-index') {
+    return (
+      <span className="status-chip status-chip--warn">
+        <span className="status-dot" />
+        No index yet
+      </span>
+    )
+  }
+  if (appStatus === 'indexing') {
+    return (
+      <span className="status-chip status-chip--busy">
+        <span className="status-dot" />
+        {percent === undefined ? 'Indexing' : `Indexing · ${percent}%`}
+      </span>
+    )
+  }
   return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <circle cx="11" cy="11" r="8" />
-      <path d="m21 21-4.35-4.35" />
-    </svg>
+    <span className="status-chip status-chip--ok">
+      <span className="status-dot" />
+      {fileCount.toLocaleString()} {fileCount === 1 ? 'file' : 'files'} indexed
+    </span>
   )
 }
 
 /**
- * Sticky top header with logo and app name.
+ * Sticky header with the wordmark, the index status and the re-index action.
+ * @param {{ appStatus: AppStatus, fileCount: number, percent?: number, onReindex: () => void }} props
  */
-function Header() {
+function Header({ appStatus, fileCount, percent, onReindex }) {
   return (
     <header className="app-header">
-      <div className="logo">
-        <div className="logo-icon">
-          <SearchIcon />
-        </div>
-        <div className="logo-text">
-          <div className="logo-name">
-            <span className="logo-name-base">nano</span>
-            <span className="logo-name-accent">search</span>
-          </div>
-          <span className="logo-subtitle">full-text search</span>
-        </div>
+      <div className="brand">
+        <span className="brand-mark">
+          <SearchIcon size={18} strokeWidth={2.6} />
+        </span>
+        <span className="brand-name">
+          nano<span className="brand-name-accent">search</span>
+        </span>
+      </div>
+      <div className="header-actions">
+        <StatusChip appStatus={appStatus} fileCount={fileCount} percent={percent} />
+        {appStatus === 'ready' && (
+          <button type="button" className="btn btn--secondary" onClick={onReindex}>
+            <RefreshIcon />
+            Re-index
+          </button>
+        )}
+        {appStatus === 'indexing' && (
+          <button type="button" className="btn btn--secondary" disabled>
+            <RefreshIcon className="spinner" />
+            Indexing…
+          </button>
+        )}
       </div>
     </header>
   )
@@ -73,8 +101,9 @@ function Header() {
 function Footer() {
   return (
     <footer className="app-footer">
-      <span>
-        Made with <span className="footer-heart">&#10084;</span> by{' '}
+      <span>nanosearch · self-hosted full-text search</span>
+      <span className="footer-credit">
+        Made with <HeartIcon /> by{' '}
         <a href="https://github.com/orangecoding" target="_blank" rel="noopener noreferrer">
           Christian Kellner
         </a>
@@ -84,33 +113,126 @@ function Footer() {
 }
 
 /**
- * Dialog shown when the user clicks Re-Index.
- * Lets them choose between an incremental update and a full reset.
+ * Short hints shown below the empty search box.
+ * @param {{ onOpenBuilder: () => void }} props
+ */
+function SearchTips({ onOpenBuilder }) {
+  return (
+    <section className="tips" aria-label="Search tips">
+      <div className="tip">
+        <h2 className="tip-title">Searches inside files</h2>
+        <p className="tip-text">PDF, Word, Markdown, HTML, RTF and plain text. Scanned images are read with OCR.</p>
+      </div>
+      <div className="tip">
+        <h2 className="tip-title">More words, fewer hits</h2>
+        <p className="tip-text">Every word you type has to appear somewhere in the file, in any order.</p>
+      </div>
+      <div className="tip">
+        <h2 className="tip-title">Need OR or NOT?</h2>
+        <p className="tip-text">
+          Combine and exclude words in the{' '}
+          <button type="button" className="link-button" onClick={onOpenBuilder}>
+            Query builder
+          </button>
+        </p>
+      </div>
+    </section>
+  )
+}
+
+/**
+ * Modal that lets the user pick between an incremental update and a full
+ * rebuild before anything starts.
  * @param {{ onChoice: (full: boolean) => void, onClose: () => void }} props
  */
 function ReindexDialog({ onChoice, onClose }) {
+  const [full, setFull] = useState(false)
+  const dialogRef = useRef(null)
+
+  useEffect(() => {
+    const dialog = dialogRef.current
+    if (!dialog || dialog.open) return
+    // showModal gives focus trapping, Escape and the backdrop for free.
+    if (typeof dialog.showModal === 'function') dialog.showModal()
+    else dialog.setAttribute('open', '')
+    dialog.querySelector('input:checked')?.focus()
+  }, [])
+
   return (
-    <dialog open className="reindex-dialog" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="reindex-dialog-inner">
-        <h2 className="reindex-title">Re-Index</h2>
-        <p className="reindex-subtitle">How would you like to update your index?</p>
-        <div className="reindex-options">
-          <button className="reindex-option" onClick={() => onChoice(false)}>
-            <span className="reindex-option-name">Update</span>
-            <span className="reindex-option-desc">
-              Keep the existing index. Only files that were added, edited, moved or deleted are touched. Fast.
-            </span>
-          </button>
-          <button className="reindex-option reindex-option--full" onClick={() => onChoice(true)}>
-            <span className="reindex-option-name">Full Reset</span>
-            <span className="reindex-option-desc">
-              Discard the existing index and rebuild from scratch. Use this after changing <code>SEARCH_DIRS</code>.
-            </span>
+    <dialog
+      ref={dialogRef}
+      className="reindex-dialog"
+      aria-labelledby="reindex-title"
+      aria-describedby="reindex-subtitle"
+      onCancel={(e) => {
+        e.preventDefault()
+        onClose()
+      }}
+      onKeyDown={(e) => e.key === 'Escape' && onClose()}
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div className="reindex-panel">
+        <div className="reindex-head">
+          <div>
+            <h2 id="reindex-title" className="reindex-title">
+              Re-index
+            </h2>
+            <p id="reindex-subtitle" className="reindex-subtitle">
+              How should the index be brought up to date?
+            </p>
+          </div>
+          <button type="button" className="btn btn--ghost btn--icon" aria-label="Close" onClick={onClose}>
+            <XIcon size={18} />
           </button>
         </div>
-        <button className="reindex-cancel" onClick={onClose}>
-          Cancel
-        </button>
+
+        <fieldset className="reindex-options">
+          <legend className="sr-only">Re-index mode</legend>
+          <label className={`reindex-option${full ? '' : ' is-selected'}`}>
+            <input type="radio" name="reindex-mode" className="radio" checked={!full} onChange={() => setFull(false)} />
+            <span className="reindex-option-text">
+              <span className="reindex-option-name">
+                Update <span className="badge badge--success">Recommended</span>
+              </span>
+              <span className="reindex-option-desc">
+                Keeps the current index. Only files that were added, edited, moved or deleted get processed. Fast.
+              </span>
+            </span>
+          </label>
+          <label className={`reindex-option reindex-option--danger${full ? ' is-selected' : ''}`}>
+            <input type="radio" name="reindex-mode" className="radio" checked={full} onChange={() => setFull(true)} />
+            <span className="reindex-option-text">
+              <span className="reindex-option-name">Full reset</span>
+              <span className="reindex-option-desc">
+                Deletes the index and rebuilds it from scratch. Use this after changing <code>SEARCH_DIRS</code>.
+              </span>
+            </span>
+          </label>
+        </fieldset>
+
+        {full && (
+          <div className="callout callout--danger" role="alert">
+            <AlertIcon size={18} />
+            <span>
+              The current index is deleted right away. Rebuilding reads every file again, which can take a long time
+              with many scanned images.
+            </span>
+          </div>
+        )}
+
+        <div className="reindex-actions">
+          <button type="button" className="btn btn--secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className={`btn ${full ? 'btn--danger' : 'btn--primary'}`}
+            onClick={() => onChoice(full)}
+          >
+            <RefreshIcon />
+            {full ? 'Reset and rebuild' : 'Start update'}
+          </button>
+        </div>
       </div>
     </dialog>
   )
@@ -118,7 +240,7 @@ function ReindexDialog({ onChoice, onClose }) {
 
 /**
  * Root application component.
- * Manages the three-state machine: no-index, indexing, ready.
+ * Manages the state machine: loading, no-index, indexing, ready.
  * Connects hooks for status polling, SSE progress streaming, and search.
  */
 export default function App() {
@@ -132,9 +254,14 @@ export default function App() {
   const searchBoxRef = useRef(null)
   const resultListRef = useRef(null)
   const donePendingRef = useRef(false)
+  const wasViewerOpenRef = useRef(false)
 
-  const { indexed, indexing: serverIndexing, loading: statusLoading, refetch } = useIndexStatus()
-  const { results, setResults, query, setQuery, exact, setExact, searchRaw } = useSearch()
+  const { indexed, fileCount, indexing: serverIndexing, loading: statusLoading, refetch } = useIndexStatus()
+  const { results, setResults, query, setQuery, exact, setExact, searchRaw, searching } = useSearch()
+
+  const isIndexing = appStatus === 'indexing'
+  const isReady = appStatus === 'ready'
+  const isViewerOpen = selectedResult !== null
 
   const handleTabChange = useCallback(
     (newTab) => {
@@ -183,6 +310,28 @@ export default function App() {
     if (serverIndexing) setAppStatus('indexing')
   }, [serverIndexing])
 
+  // "/" jumps to the search box from anywhere on the page.
+  useEffect(() => {
+    function onKeyDown(e) {
+      if (e.key !== '/' || isViewerOpen || tab !== 'search' || !isReady || shouldIgnoreShortcut(e)) return
+      e.preventDefault()
+      searchBoxRef.current?.focus()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [isViewerOpen, tab, isReady])
+
+  // A newly opened preview starts at the top of the page.
+  useEffect(() => {
+    if (selectedResult) window.scrollTo?.(0, 0)
+  }, [selectedResult])
+
+  // Closing the preview hands focus back to the result list it was opened from.
+  useEffect(() => {
+    if (wasViewerOpenRef.current && !isViewerOpen) resultListRef.current?.focus({ preventScroll: true })
+    wasViewerOpenRef.current = isViewerOpen
+  }, [isViewerOpen])
+
   /** Sends POST /api/index. SSE is already connected at this point. */
   const startIndex = useCallback(
     async (full = false) => {
@@ -212,17 +361,10 @@ export default function App() {
     [refetch],
   )
 
-  const handleIndexClick = useCallback(() => {
-    if (appStatus === 'ready') {
-      setReindexOpen(true)
-    } else {
-      startIndex(false)
-    }
-  }, [appStatus, startIndex])
-
   const handleReindexChoice = useCallback(
     (full) => {
       setReindexOpen(false)
+      setSelectedResult(null)
       startIndex(full)
     },
     [startIndex],
@@ -232,89 +374,150 @@ export default function App() {
     setSelectedResult(result)
   }, [])
 
-  const isIndexing = appStatus === 'indexing'
-  const isReady = appStatus === 'ready'
-  const isViewerOpen = selectedResult !== null
-  const showResults = !isViewerOpen && isReady && (query.trim().length > 0 || results.length > 0)
+  const closeViewer = useCallback(() => setSelectedResult(null), [])
+
+  const clearQuery = useCallback(() => {
+    setQuery('')
+    searchBoxRef.current?.focus()
+  }, [setQuery])
+
+  // Words to highlight in the preview. The Query builder's words come from the
+  // marked hits in each result's snippet instead.
+  const highlight = useMemo(
+    () => (tab === 'search' ? { terms: query.split(/[^\p{L}\p{N}]+/u).filter(Boolean), prefix: !exact } : undefined),
+    [tab, query, exact],
+  )
+
+  const hasQuery = query.trim().length > 0
+  const showSearchBox = tab === 'search' || !isReady
+  const showTips = isReady && tab === 'search' && !hasQuery
+  // "No results" only once the answer for the current query is in, not while the debounce is still running.
+  const showResults = isReady && (results.length > 0 || (hasQuery && !searching))
 
   return (
     <>
-      <Header />
-      <main className="app-main">
-        <div className="search-section">
-          <div className="search-section-header">
-            <nav className="tab-bar">
-              <button
-                className={`tab ${tab === 'search' ? 'tab--active' : ''}`}
-                onClick={() => handleTabChange('search')}
-              >
-                Search
-              </button>
-              <button
-                className={`tab ${tab === 'extended' ? 'tab--active' : ''}`}
-                onClick={() => handleTabChange('extended')}
-                disabled={!isReady}
-              >
-                Extended
-              </button>
-            </nav>
-            <button className="index-btn" onClick={handleIndexClick} disabled={isIndexing || appStatus === 'loading'}>
-              {isIndexing ? 'Indexing...' : isReady ? 'Re-Index' : 'Create Index'}
-            </button>
-          </div>
+      <Header
+        appStatus={appStatus}
+        fileCount={fileCount}
+        percent={progress?.percent}
+        onReindex={() => setReindexOpen(true)}
+      />
+      <main className={`app-main${isViewerOpen ? ' app-main--wide' : ''}`}>
+        <h1 className="sr-only">nanosearch, full-text search for your documents</h1>
 
-          {!isViewerOpen && (
-            <>
-              <p className="tab-description">{TAB_DESCRIPTIONS[tab]}</p>
-
-              {tab === 'search' && (
-                <>
-                  <div className="search-row">
-                    <SearchBox
-                      ref={searchBoxRef}
-                      value={query}
-                      onChange={setQuery}
-                      disabled={!isReady}
-                      placeholder={
-                        isReady ? 'Search your documents...' : 'No index yet - create one to start searching'
-                      }
-                      onArrowDown={() => resultListRef.current?.focus({ preventScroll: true })}
-                      onEscape={() => {
-                        setQuery('')
-                        searchBoxRef.current?.focus()
-                      }}
-                    />
+        {isViewerOpen ? (
+          <DocumentViewer
+            result={selectedResult}
+            results={results}
+            onSelect={setSelectedResult}
+            onBack={closeViewer}
+            highlight={highlight}
+          />
+        ) : (
+          <>
+            <section className="search-section" aria-label="Search">
+              {isReady && (
+                <div className="search-toolbar">
+                  <div className="segmented segmented--mode" role="group" aria-label="Search mode">
+                    <button
+                      type="button"
+                      className="segmented-option"
+                      aria-pressed={tab === 'search'}
+                      onClick={() => handleTabChange('search')}
+                    >
+                      <SearchIcon size={15} strokeWidth={2.4} />
+                      Search
+                    </button>
+                    <button
+                      type="button"
+                      className="segmented-option"
+                      aria-pressed={tab === 'extended'}
+                      onClick={() => handleTabChange('extended')}
+                    >
+                      <SlidersIcon size={15} strokeWidth={2.4} />
+                      Query builder
+                    </button>
                   </div>
+                  {tab === 'search' && (
+                    <span className="shortcut-hint">
+                      Press <kbd>/</kbd> to search
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {showSearchBox && (
+                <>
+                  <SearchBox
+                    ref={searchBoxRef}
+                    value={query}
+                    onChange={setQuery}
+                    disabled={!isReady}
+                    placeholder={PLACEHOLDERS[appStatus]}
+                    onArrowDown={() => resultListRef.current?.focus({ preventScroll: true })}
+                    onEscape={clearQuery}
+                  />
                   {isReady && (
-                    <label className="exact-match-label">
-                      <input type="checkbox" checked={exact} onChange={(e) => setExact(e.target.checked)} />
-                      Exact match
-                    </label>
+                    <div className="search-options">
+                      <p className="search-hint">
+                        {exact ? (
+                          <>
+                            Whole words only: <code>doc</code> no longer finds <code>documents</code>.
+                          </>
+                        ) : (
+                          <>
+                            Prefix matching is on: <code>doc</code> also finds <code>documents</code>. Every word has to
+                            appear.
+                          </>
+                        )}
+                      </p>
+                      <label className="switch">
+                        <input
+                          type="checkbox"
+                          role="switch"
+                          className="switch-input"
+                          checked={exact}
+                          onChange={(e) => setExact(e.target.checked)}
+                        />
+                        Exact match
+                      </label>
+                    </div>
                   )}
                 </>
               )}
 
               {tab === 'extended' && isReady && <QueryBuilder onSearch={searchRaw} />}
-            </>
-          )}
-        </div>
+            </section>
 
-        {appStatus === 'no-index' && <StatusBanner />}
-        {isIndexing && <ProgressOverlay {...progress} />}
+            {appStatus === 'no-index' && <StatusBanner onCreate={() => startIndex(false)} />}
+            {isIndexing && <ProgressOverlay {...progress} />}
+            {showTips && <SearchTips onOpenBuilder={() => handleTabChange('extended')} />}
 
-        {isViewerOpen && <DocumentViewer result={selectedResult} onBack={() => setSelectedResult(null)} />}
-
-        {showResults && (
-          <ResultList
-            results={results}
-            onOpen={handleOpen}
-            listRef={resultListRef}
-            onFocusSearchBox={() => searchBoxRef.current?.focus()}
-            onEscape={() => {
-              setQuery('')
-              searchBoxRef.current?.focus()
-            }}
-          />
+            {showResults && (
+              <div className="results">
+                {results.length > 0 && (
+                  <div className="results-header">
+                    <h2 className="results-title">
+                      {results.length} {results.length === 1 ? 'result' : 'results'}
+                      {tab === 'search' && <span className="results-query"> for “{query.trim()}”</span>}
+                    </h2>
+                    <span className="results-meta">
+                      {results.length >= RESULT_LIMIT
+                        ? `Showing the best ${RESULT_LIMIT}. Add words to narrow it down.`
+                        : 'Best match first'}
+                    </span>
+                  </div>
+                )}
+                <ResultList
+                  results={results}
+                  onOpen={handleOpen}
+                  listRef={resultListRef}
+                  onFocusSearchBox={() => searchBoxRef.current?.focus()}
+                  onEscape={clearQuery}
+                />
+              </div>
+            )}
+          </>
         )}
 
         {reindexOpen && <ReindexDialog onChoice={handleReindexChoice} onClose={() => setReindexOpen(false)} />}

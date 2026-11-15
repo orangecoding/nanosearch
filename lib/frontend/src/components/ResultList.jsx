@@ -45,14 +45,36 @@ export function ResultList({ results, onOpen, listRef, onFocusSearchBox, onEscap
   )
 
   if (results.length === 0) {
-    return <p className="no-results">No results found.</p>
+    return <p className="no-results">No results found. Try fewer or shorter words.</p>
   }
 
   return (
-    <ul className="result-list" role="list" tabIndex={0} ref={listRef} onFocus={handleFocus} onKeyDown={handleKeyDown}>
-      {results.map((result, i) => (
-        <ResultItem key={result.path} result={result} focused={i === focusedIndex} onClick={() => onOpen(result)} />
-      ))}
-    </ul>
+    <>
+      <ul
+        className="result-list"
+        role="list"
+        aria-label="Search results"
+        tabIndex={0}
+        ref={listRef}
+        onFocus={handleFocus}
+        onKeyDown={handleKeyDown}
+      >
+        {results.map((result, i) => (
+          <ResultItem key={result.path} result={result} focused={i === focusedIndex} onClick={() => onOpen(result)} />
+        ))}
+      </ul>
+      <div className="key-legend">
+        <span>
+          <kbd>↑</kbd>
+          <kbd>↓</kbd> Move
+        </span>
+        <span>
+          <kbd>↵</kbd> Preview
+        </span>
+        <span>
+          <kbd>Esc</kbd> Clear search
+        </span>
+      </div>
+    </>
   )
 }

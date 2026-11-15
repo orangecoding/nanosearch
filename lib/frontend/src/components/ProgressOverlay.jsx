@@ -3,6 +3,8 @@
  * Licensed under Apache-2.0 with Commons Clause and Attribution/Naming Clause
  */
 
+import { ClockIcon, InfoIcon } from './Icons.jsx'
+
 /**
  * Formats an ETA in seconds to a human-readable string.
  * @param {number} eta - Seconds remaining, or -1 when not yet calculable.
@@ -30,44 +32,84 @@ function formatScanSummary({ scanned, total, moved, removed }) {
 }
 
 /**
- * Displays indexing progress with a progress bar, file counter, and ETA.
+ * Displays indexing progress: big percentage, progress bar, the file being
+ * read, the scan summary and the ETA.
  *
- * Renders a "Preparing…" skeleton before the first event, and an "up to date"
+ * Renders a "Preparing…" state before the first event, and an "up to date"
  * state when the scan found nothing to do.
  * @param {{ file?: string, processed?: number, total?: number, percent?: number, eta?: number, scanned?: number, moved?: number, removed?: number }} props
  */
 export function ProgressOverlay({ file, processed, total, percent, eta, scanned, moved, removed }) {
-  const summary =
-    scanned === undefined ? null : (
-      <p className="progress-summary">{formatScanSummary({ scanned, total, moved, removed })}</p>
-    )
+  const started = file !== undefined
+  const upToDate = !started && scanned !== undefined && total === 0
+  const shownPercent = started ? (percent ?? 0) : upToDate ? 100 : 0
 
-  if (file === undefined) {
-    const upToDate = scanned !== undefined && total === 0
-    return (
-      <div className="progress-overlay">
-        <p className="progress-filename">{upToDate ? 'Index is up to date' : 'Preparing…'}</p>
-        <div className="progress-bar-track">
-          <div className="progress-bar-fill" style={{ width: upToDate ? '100%' : '0%' }} />
-        </div>
-        <p className="progress-label">{upToDate ? 'Nothing to re-index' : 'Starting…'}</p>
-        {summary}
-        <p className="progress-eta">&nbsp;</p>
-      </div>
-    )
+  let title = 'Preparing…'
+  let subtitle = 'Looking for new, edited, moved and deleted files.'
+  if (upToDate) {
+    title = 'Index is up to date'
+    subtitle = 'Nothing to re-index.'
+  } else if (started) {
+    title = 'Indexing'
+    subtitle = 'Extracting text from new and changed files.'
   }
 
   return (
-    <div className="progress-overlay">
-      <p className="progress-filename">{file}</p>
-      <div className="progress-bar-track">
-        <div className="progress-bar-fill" style={{ width: `${percent}%` }} />
+    <section className="progress-card" aria-labelledby="progress-title">
+      <div className="progress-head">
+        <div>
+          <h2 id="progress-title" className="progress-title">
+            {title}
+          </h2>
+          <p className="progress-subtitle">{subtitle}</p>
+        </div>
+        {started && (
+          <span className="progress-eta">
+            <ClockIcon size={14} />
+            {formatEta(eta)}
+          </span>
+        )}
       </div>
-      <p className="progress-label">
-        {processed} of {total} files ({percent}%)
+
+      <div className="progress-figures">
+        <span className="progress-percent">
+          {shownPercent}
+          <span className="progress-percent-sign">%</span>
+        </span>
+        {started && (
+          <span className="progress-label">
+            {processed} of {total} files
+          </span>
+        )}
+      </div>
+      <div
+        className="progress-bar-track"
+        role="progressbar"
+        aria-label="Indexing progress"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={shownPercent}
+      >
+        <div className="progress-bar-fill" style={{ width: `${shownPercent}%` }} />
+      </div>
+
+      {started && (
+        <div className="progress-file-row">
+          <span className="eyebrow">Reading</span>
+          <span className="progress-file" title={file}>
+            {file}
+          </span>
+        </div>
+      )}
+
+      {scanned !== undefined && (
+        <p className="progress-summary">{formatScanSummary({ scanned, total, moved, removed })}</p>
+      )}
+
+      <p className="progress-note">
+        <InfoIcon size={16} />
+        Indexing runs on the server. You can close this tab, the progress is picked up again when you come back.
       </p>
-      {summary}
-      <p className="progress-eta">{formatEta(eta)}</p>
-    </div>
+    </section>
   )
 }
