@@ -1,0 +1,15 @@
+{
+  "graftReads": 1,
+  "sourceReads": 1,
+  "savedTokens": 0,
+  "injectedPointers": [],
+  "nudges": 0,
+  "promptAsks": 1,
+  "host": "claude-code",
+  "lastBillingUuid": "e1e1d44e-4438-4e03-a131-a729666bb532",
+  "inputCostMicros": 11822147,
+  "inputTokensBilled": 9496624,
+  "turnUsedGraft": false,
+  "graftTurns": 1,
+  "lastTallyUuid": "e1e1d44e-4438-4e03-a131-a729666bb532"
+}
